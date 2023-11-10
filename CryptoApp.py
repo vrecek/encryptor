@@ -10,7 +10,7 @@ class CryptoApp:
     def __init__(self, omitFilesToEncrypt=[]):
         KEY_PATH = '.key'
 
-        # If the key exists, that means the files have been already encrypted
+        # If a key exists, that means the files have been already encrypted
         if os.path.isfile(KEY_PATH):
             self.isEncrypted = True
 
@@ -28,18 +28,19 @@ class CryptoApp:
                 file.write(self.key)
 
         # Initialize the Fernet, the key path and the files to omit
-        # And as well as the current directory
-        self.ommitedFiles = (omitFilesToEncrypt + ['.key', 'CryptoApp.py', 'index.py'])
+        # And as well as the original path, where the script was executed
+        self.ommitedFiles = omitFilesToEncrypt + ['.key', 'CryptoApp.py', 'index.py']
         self.KEY_PATH = KEY_PATH
         self.originalPath = os.getcwd()
-        self.count = 0
+        self.countFiles = 0
+        self.countDirs = 0
 
         try:
             self.fernet = Fernet(self.key)
         except ValueError:
 
             # If the key is incorrect, delete it, and exit the program
-            print('Incorrect key!')
+            print('Incorrect key! You can forget about decryption')
             print('Removing key...')
             os.remove(self.KEY_PATH)
 
@@ -56,55 +57,68 @@ class CryptoApp:
 
         # Loop through each file
         for path in files:
-            isDir = os.path.isdir(path)
+            try:
+                isDir = os.path.isdir(path)
 
-            # If the "path" is directory, change the working directory
-            # Handle the files recursively, and finally return to the original directory
-            if isDir:
-                os.chdir(path)
-                self.__actionHandler()   
-                os.chdir(self.originalPath)
+                # If the "path" is directory, change the working directory
+                # Handle the files recursively, and finally return to the original directory
+                if isDir:
+                    # Save the current path, and increment the dir count
+                    currentDir = os.getcwd()
+                    self.countDirs += 1
 
-                continue             
+                    os.chdir(path)
+                    self.__actionHandler()   
+                    os.chdir(currentDir)
 
-
-            # Read the file contents
-            old_text = self.readFile(path)
-
-            # Encrypt or decrypt the file
-            if self.isEncrypted:
-                new_text = self.fernet.decrypt(old_text)
-            else:
-                new_text = self.fernet.encrypt(old_text)
+                    continue             
 
 
-            # Finally, write to the file its new content
-            self.writeFile(path, new_text)
+                # Read the file contents
+                old_text = self.readFile(path)
+                if not old_text: continue
 
-            # Increment the modified files count
-            self.count += 1
+                try:
+                    # Encrypt or decrypt the file
+                    if self.isEncrypted:
+                        new_text = self.fernet.decrypt(old_text)
+                    else:
+                        new_text = self.fernet.encrypt(old_text)
+
+                except:
+                    # Skip the file, if something went wrong
+                    print(f'Could not modify file: {path}')
+                    return
+
+
+                # Finally, write to the file its new content
+                self.writeFile(path, new_text)
+
+                # Increment the modified files count
+                self.countFiles += 1
+
+            except PermissionError:
+                # Skip if there is a permission error
+                print(f'Not permitted to operate on: {path}')
+                return
 
 
 
     # Encrypt the files
-    def encrypt(self) -> int:
+    def encrypt(self) -> None:
         print('Encrypting...')
         self.__actionHandler()                
-        print(f'Encrypted {self.count} files')
-
-        return self.count
+        print(f'Encrypted {self.countFiles} files')
 
 
 
     # Decrypt the files
-    def decrypt(self) -> int:
+    def decrypt(self) -> None:
         print('Decrypting...')
         self.__actionHandler()
-        print(f'Decrypted {self.count} files')
+        print(f'Decrypted {self.countFiles} files')
 
         os.remove(self.KEY_PATH)
-
-        return self.count
 
 
 
@@ -187,11 +201,10 @@ class CryptoApp:
 
 
     # Read the file contents
-    def readFile(self, path) -> str:
+    def readFile(self, path) -> str | None:
         if not os.path.isfile(path):
             print(f'File: {path} does not exist')
-            print('Aborting...')
-            exit(1)
+            return None
 
         with open(path, 'rb') as file:
             return file.read()
@@ -201,3 +214,9 @@ class CryptoApp:
     # Returns True, if the files were already encrypted (if the key.txt is present)    
     def isAlreadyEncrypted(self) -> bool:
         return self.isEncrypted
+
+    
+
+    # Get the total affected files and directories
+    def getCount(self) -> Dict[str, int]:
+        return { "dirs": self.countDirs, "files": self.countFiles }

