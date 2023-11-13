@@ -188,18 +188,23 @@ class CryptoApp:
 
     # Set the wallpaper image
     def setDesktopBG(self, target_os, target_de, file) -> None:
-        # Return if file is not truthy
+        # Return if a file is not truthy
         if not file: return
             
-        try:
-            # Get the absolute path
-            abs_path = os.path.abspath(file)
+        # Get the absolute path of a file
+        abs_path = os.path.abspath(file)
 
+        try:
             if target_os == 'linux':
                 # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
                 if target_de == 'xfce4':
-                    for x in ['Virtual1', '0']:
-                        call(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image -s {abs_path} 2>/dev/null', shell=True)
+                    for monitor in ['Virtual1', '0']:
+                        call(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2>/dev/null', shell=True)
+
+                # GNOME
+                if target_de == 'gnome':
+                    for style in ['picture-uri', 'picture-uri-dark']:
+                        call(f'gsettings set org.gnome.desktop.background {style} file://{file}', shell=True)
 
         except:
             print('Could not change the wallpaper')
@@ -208,19 +213,31 @@ class CryptoApp:
 
     # Get the current wallpaper image
     def getDesktopBG(self, target_os, target_de) -> str | None:
-        if target_os == 'linux':
-            # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
-            if target_de == 'xfce4':
-                for x in ['Virtual1', '0']:
-                    result = run(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image', capture_output=True, shell=True)
+        output = None
 
-                    # Decode the stdout
-                    out = result.stdout.decode('utf-8').rstrip()
+        try:
+            if target_os == 'linux':
+                # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
+                if target_de == 'xfce4':
+                    for x in ['Virtual1', '0']:
+                        result = run(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image', capture_output=True, shell=True)
 
-                    if out: return out
+                        # Decode the stdout
+                        out = result.stdout.decode('utf-8').rstrip()
+                        if out: return out
 
-        return None
-                        
+                # GNOME. Gets the dark theme
+                elif target_de == 'gnome':
+                    result = run('gsettings get org.gnome.desktop.background picture-uri-dark', capture_output=True, shell=True)
+                    
+                    output = result.stdout.decode('utf-8').rstrip().replace('file://', '').replace("'", '')
+
+            return output
+
+        except:
+            print('Could not get the background')
+            return None    
+
 
 
     # Write to the file
