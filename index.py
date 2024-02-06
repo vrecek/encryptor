@@ -38,7 +38,7 @@ extra_files_name:      str = 'Hello_lock'
 desktop_path:          str = os.path.join(os.path.expanduser('~'), "Desktop")
 lock_wallpaper:        str = os.path.abspath('locked.jpg')
 new_wallpaper:         Optional[str] = None
-initScript:            Optional[str] = os.path.join('run', 'wintest.pyw')
+initScript:            Optional[str] = os.path.join('run', 'linuxtest.py')
 
 
 if __name__ == '__main__':

