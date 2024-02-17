@@ -9,6 +9,7 @@ import signal
 import json
 import importlib
 import re
+import dbus
 
 if importlib.find_loader('winreg'):
     import winreg
@@ -17,6 +18,7 @@ if importlib.find_loader('winreg'):
 # ✅ Windows 10
 # ✅ Mint (Cinnamon)
 # ✅ Arch (Cinnamon, xfce, GNOME)
+# ✅ Endeavour (KDE Plasma)
 
 class CryptoApp:
     def __init__(self, startPath: str = None):
@@ -221,7 +223,7 @@ class CryptoApp:
             match os.environ.get("DESKTOP_SESSION"):
                 # Known: cinnamon, xfce
                 case 'ubuntu': de = 'gnome'
-                case 'kubuntu': de = 'kde'
+                case 'kubuntu': de = 'plasma'
                 case _: de = os.environ.get("DESKTOP_SESSION")
 
         return [os_info, de]            
@@ -246,6 +248,24 @@ class CryptoApp:
                 if target_de in ['gnome', 'cinnamon']:
                     for style in ['picture-uri', 'picture-uri-dark']:
                         self.__runsh(f'gsettings set org.gnome.desktop.background {style} file://{abs_path}')
+
+                # KDE Plasma
+                elif target_de == 'plasma':
+                    script: str = f"""
+                    var allDesktops = desktops();
+                    for (i=0;i<allDesktops.length;i++) {{
+                        d = allDesktops[i];
+                        d.wallpaperPlugin = "org.kde.image";
+                        d.currentConfigGroup = Array("Wallpaper", "org.kde.image", "General");
+                        d.writeConfig("Image", "{file}")
+                    }}
+                    """
+
+                    session: any = dbus.SessionBus().get_object('org.kde.plasmashell', '/PlasmaShell')
+                    plasma:  any = dbus.Interface(session, 'org.kde.PlasmaShell')
+
+                    plasma.evaluateScript(script)
+
 
             # Windows
             if target_os == 'windows':
@@ -281,6 +301,26 @@ class CryptoApp:
                     
                     # Remove the "file://" and '' to get a clear url
                     output = result.rstrip().replace('file://', '').replace("'", '')
+
+                # KDE Plasma
+                elif target_de == 'plasma':
+                    # Current wallapper should be in this file
+                    kde_file:      str = 'plasma-org.kde.plasma.desktop-appletsrc'
+                    kde_file_path: str = os.path.join(os.path.expanduser('~'), '.config', kde_file)
+
+                    if os.path.isfile(kde_file_path):
+                        with open(kde_file_path, 'r') as file:
+                            # Find the wallpaper's path
+                            content:    str = file.read()
+                            index:      int = content.find('[Wallpaper]')
+                            image_line: str = content[index:].splitlines()[1]
+
+                            if 'Image' in image_line:
+                                image_path: str = image_line[6:]
+
+                                if os.path.isfile(image_path):
+                                    output = image_path
+                
 
             # Windows
             if target_os == 'windows':
@@ -382,14 +422,14 @@ class CryptoApp:
             self.writeFile(CRON_ARG, current)
             
             # Save the new cron settings and run the script
-            self.__runsh(f'crontab {CRON_ARG} 2> /dev/null')
+            self.__runsh(f'crontab {CRON_ARG} &> /dev/null')
             self.__runsh(f'python3 {scriptToStart} &')
 
             os.remove(CRON_ARG)
 
         elif type == 'stop' and os.path.isfile(CRON_ORIGINAL):
             # Revert to the original cron settings
-            self.__runsh(f'crontab {CRON_ORIGINAL} 2> /dev/null')
+            self.__runsh(f'crontab {CRON_ORIGINAL} &> /dev/null')
             os.remove(CRON_ORIGINAL)
 
             try:
