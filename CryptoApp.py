@@ -2,6 +2,7 @@ from cryptography.fernet import Fernet
 from subprocess import call, run
 from typing import Optional
 from glob import glob
+from time import sleep
 import ctypes
 import sys
 import os
@@ -18,6 +19,7 @@ if importlib.find_loader('winreg'):
 # ✅ Windows 10
 # ✅ Mint (Cinnamon)
 # ✅ Arch (Cinnamon, xfce, GNOME)
+# ✅ Fedora (GNOME)
 # ✅ Endeavour (KDE Plasma)
 
 class CryptoApp:
@@ -425,11 +427,14 @@ class CryptoApp:
             self.__runsh(f'crontab {CRON_ARG} &> /dev/null')
             self.__runsh(f'python3 {scriptToStart} &')
 
+            sleep(1)
             os.remove(CRON_ARG)
 
         elif type == 'stop' and os.path.isfile(CRON_ORIGINAL):
             # Revert to the original cron settings
             self.__runsh(f'crontab {CRON_ORIGINAL} &> /dev/null')
+            
+            sleep(1)
             os.remove(CRON_ORIGINAL)
 
             try:
