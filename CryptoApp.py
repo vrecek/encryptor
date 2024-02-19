@@ -20,6 +20,7 @@ if importlib.find_loader('winreg'):
 # ✅ Mint (Cinnamon)
 # ✅ Arch (Cinnamon, xfce, GNOME)
 # ✅ Fedora (GNOME)
+# ✅ Debian (GNOME)
 # ✅ Endeavour (KDE Plasma)
 
 class CryptoApp:
